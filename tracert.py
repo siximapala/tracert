@@ -9,23 +9,15 @@ import sys
 # Check if the address is local to avoid WHOIS queries,
 # mark it as local in the output
 def is_local_ip(ip_address):
-    if not isinstance(ip_address, str):
-        return False
-    
-    octets = ip_address.split('.')
-    if len(octets) != 4:
-        return False
-    
-    first_octet = int(octets[0])
-    if first_octet == 10 \
-            or (first_octet == 172 and 16 <= int(octets[1]) <= 31) \
-            or (first_octet == 192 and int(octets[1]) == 168):
-        return True
-    
-    # Check for localhost (127.0.0.1)
-    if ip_address == '127.0.0.1':
-        return True
-    if ip_address == '0.0.0.0':
+    local_networks = [
+        '10.',
+        '172.',
+        '192.168.'
+    ]
+    for network in local_networks:
+        if ip_address.startswith(network):
+            return True
+    if ip_address in ['127.0.0.1', '0.0.0.0']:
         return True
     return False
 
@@ -134,27 +126,27 @@ def create_icmp_packet():
 
 
 def receive_ping(my_socket, timeout):
-    received_data = ["",""]
     while True:
         ready, _, _ = select.select([my_socket], [], [], timeout) # Get data from socket by readiness
         if ready:
             packet_data, addr = my_socket.recvfrom(1024)
             icmp_type, _, _, _, _ = struct.unpack("bbHHh", packet_data[20:28])
 
-            received_data[0] = addr[0]
-
+            received_ip = addr[0]
+            additional_data = -1
+            
             whois_request_server = get_appropiate_whois_server(addr[0])
             if whois_request_server != -1:
-                received_data[1] = whois_concrete_data(addr[0], whois_request_server)
+                received_data = whois_concrete_data(addr[0], whois_request_server)
             else:
                 # If the method did not find an optimal WHOIS server in IANA, search in RIPE with extended tag
-                received_data[1] = whois_concrete_data(addr[0], "-B whois.ripe.net")
+                received_data = whois_concrete_data(addr[0], "-B whois.ripe.net")
 
             if icmp_type == 0:
-                received_data.append("Trace complete.")
-            return received_data
+                additional_data = 1
+            return received_ip, received_data, additional_data
         else:
-            return -1
+            return -1, -1, -1
         
 def is_valid_address(address):
     # Check for the validity of a domain name
@@ -172,7 +164,6 @@ def is_valid_address(address):
 
 
 def tracert(ip_addr):
-
     try:
         try:
             if is_valid_address(ip_addr) == False: # проверка адреса на валидность
@@ -197,25 +188,25 @@ def tracert(ip_addr):
             icmp_packet = create_icmp_packet() # Create ICMP packet
             s.sendto(icmp_packet, (dest_ip, 1))  # Send ICMP packet
 
-            received_data = receive_ping(s, timeout) # Receive data into socket
+            received_ip, received_data, additional_data = receive_ping(s, timeout) # Receive data into socket
 
             if received_data == -1: # If no data received, skip and mark the address with a star
                 print(f"{ttl}: *\n")
                 continue
             else:
-                print(f"{ttl}: {received_data[0]}")
+                print(f"{ttl}: {received_ip}")
 
-            if is_local_ip(received_data[0]): # Check if the address of the node within the trace is local
+            if is_local_ip(received_ip): # Check if the address of the node within the trace is local
                 print("local\n")
                 continue
 
-            if 'AS' in received_data[1]:
-                as_number = re.sub(r'\D', '', received_data[1]['AS'])  # Remove all non-numeric characters in AS using regex
-                received_data[1]['AS'] = as_number
+            if 'AS' in received_data:
+                as_number = re.sub(r'\D', '', received_data['AS'])  # Remove all non-numeric characters in AS using regex
+                received_data['AS'] = as_number
 
             try: 
-                print(", ".join([f"{key}: {value}" for key, value in received_data[1].items() if value])) # If data available, get from dictionary
-                if received_data[2] == "Trace complete.":
+                print(", ".join([f"{key}: {value}" for key, value in received_data.items() if value])) # If data available, get from dictionary
+                if additional_data == 1:
                     break
             except:
                 pass
