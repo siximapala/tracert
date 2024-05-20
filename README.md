@@ -1,6 +1,6 @@
 ## Tracert Script
 
-This script is designed to perform traceroute to a given IP address, displaying the route along with the Autonomous System (AS) numbers of intermediate nodes using WHOIS service responses, similar as tracert script from Windows.
+This script is designed to perform traceroute to a given IP address, displaying the route along with information about intermediate nodes using WHOIS service responses. Similar as tracert script from Windows.
 
 ### Input Format
 - IP address (or DNS name) passed as a command-line argument.
